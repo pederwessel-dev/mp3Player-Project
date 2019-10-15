@@ -1,23 +1,31 @@
-from PyQt5.QtCore import QDir, Qt, QUrl, QCoreApplication,QSize
-from PyQt5.QtCore import pyqtSignal as Signal,pyqtSlot as Slot, QThread
+from PyQt5.QtCore import QDir, Qt, QUrl, QCoreApplication,QSize,QFileInfo
+from PyQt5.QtCore import pyqtSignal as Signal,pyqtSlot as Slot, QThread, QAbstractListModel
 import datetime,time
 from PyQt5.QtMultimedia import QMediaContent, QMediaPlayer, QMediaPlaylist
+from PyQt5.QtGui import QPalette,QColor
 
 from PyQt5.QtWidgets import (QApplication, QFileDialog, QHBoxLayout, QLabel,
-        QPushButton, QSizePolicy, QSlider, QStyle, QVBoxLayout, QWidget)
+        QPushButton, QSizePolicy, QSlider, QStyle, QVBoxLayout, QWidget, QStyleFactory,QDialog, QLineEdit)
 
-from PyQt5.QtWidgets import QMainWindow,QWidget, QPushButton, QAction, QMessageBox
+from PyQt5.QtWidgets import QMainWindow,QWidget, QPushButton, QAction, QMessageBox,QTableWidgetItem, QGridLayout, QDialogButtonBox
 from PyQt5.QtGui import QIcon
 import sys
 import mp3playerGUILayout3
 from mutagen.mp3 import MP3
 
-#openedfile_signal = Signal(str)
-#loadedfile_signal = Signal(float)
-#song_signal = Signal(str
-#busy_signal = Signal(str)
-#loopcontrol_signal = Signal(str)
-#FIX EMIT FUNCTION for volume!
+
+class PlaylistModel(QAbstractListModel):
+    def __init__(self, playlist, *args, **kwargs):
+        super(PlaylistModel, self).__init__(*args, **kwargs)
+        self.playlist = playlist
+
+    def data(self, index, role):
+        if role == Qt.DisplayRole:
+            media = self.playlist.media(index.row())
+            return media.canonicalUrl().fileName()
+
+    def rowCount(self, index):
+        return self.playlist.mediaCount()
 
 class MainUIClass(QMainWindow,mp3playerGUILayout3.Ui_MainWindow):
 
@@ -25,30 +33,32 @@ class MainUIClass(QMainWindow,mp3playerGUILayout3.Ui_MainWindow):
         super(MainUIClass,self).__init__(parent)
         self.setupUi(self)
         self.fixLayout()
-        #Connecting button clicks and functions
-        self.OpenButton.clicked.connect(self.OpenFile_clicked)
-        self.PlayButton.clicked.connect(self.play)
-        self.StopButton.clicked.connect(self.stop)
-        self.muteButton.clicked.connect(self.mute)
-        #self.Forward.pressed.connect(self.forward) #Implement QThread!!!!!
-        #self.Backward.pressed.connect(self.backward)
-
         self.mediaPlayer = QMediaPlayer()
+        self.mediaPlayer.error.connect(self.erroralert)
+
         self.playlist = QMediaPlaylist()
+        self.mediaPlayer.setPlaylist(self.playlist)
+
+        #Connecting button clicks and functions
+        self.OpenButton.clicked.connect(self.addtoqueue)
+        self.PlayButton.clicked.connect(self.play)
+        self.StopButton.clicked.connect(self.mediaPlayer.stop)
+        self.muteButton.clicked.connect(self.mute)
+        self.ForwardButton.clicked.connect(self.playlist.next)
+        self.BackwardButton.clicked.connect(self.playlist.previous)
+
+        self.addToQueue.clicked.connect(self.addtoqueue)
+        self.repeatButton.clicked.connect(self.repeat)
+        self.shuffleButton.clicked.connect(self.shuffle)
+
         #Adding valuechange functionality
-        self.Timeline.setRange(0, 0)
+        self.Timeline.setRange(0, 100)
         self.Timeline.sliderReleased.connect(self.set_position)
 
         self.mediaPlayer.setVolume(50)
         self.volume_on = True
         self.Volumedial.setValue(50)
         self.Volumedial.valueChanged.connect(self.set_volume)
-
-		#initiating the Threads
-		#self.threadclass = ThreadClass()
-		#self.loopcontrol_signal.connect(self.threadclass.loopcontrol_func)
-		#self.threadclass.new_time.connect(self.displaytime)
-		#self.threadclass.start()
 
         self.displayfilename_thread = DisplayThread()
         self.displayfilename_thread.start()
@@ -58,37 +68,57 @@ class MainUIClass(QMainWindow,mp3playerGUILayout3.Ui_MainWindow):
         self.mediaPlayer.durationChanged.connect(self.durationChanged)
         self.mediaPlayer.positionChanged.connect(self.positionChanged)
         self.playlist.currentMediaChanged.connect(self.filenameChange)
+        self.tableWidget.cellDoubleClicked.connect(self.getcurrentrow)
         #self.mediaPlayer.mutedChanged.connect(self.muteChange)
 
-        p = self.palette()
-        p.setColor(self.backgroundRole(), Qt.lightGray)
-        self.setPalette(p)
-        self.dumpObjectInfo()
+        self.items = 0
+
+        self.repeated = True
+        self.shuffled = True
+
+        #p = self.palette()
+        #p.setColor(self.backgroundRole(), Qt.lightGray)
+        #self.setPalette(p)
+        #self.dumpObjectInfo()
 
     @Slot()
-    def OpenFile_clicked(self):
-        print(self.mediaPlayer.mediaStatus())
-        fileName, _ = QFileDialog.getOpenFileName(self, "Select song")# QDir.homePath())
-        if fileName != '':
-            self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(fileName)))
-            #self.mediaPlayer.setMedia(QMediaContent()
-            self.mediaPlayer.setPlaylist(self.playlist)
-            self.PlayButton.setEnabled(True)
+    def addtoqueue(self):
+        filename, _ = QFileDialog.getOpenFileName(self, "Select song")# QDir.homePath())
+        if filename != '':
+            self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(filename)))
+            self.addtoview(filename)
+
+    def addtoview(self,filename):
+        self.tableWidget.insertRow(self.items)
+        table_filename = QTableWidgetItem(filename.split("/")[-1])
+        inputdialog = InputDialog()
+        inputdialog.exec_()
+        if len(inputdialog.accept_func()[0])>0 or len(inputdialog.accept_func()[1])>0:
+            table_artist = QTableWidgetItem(inputdialog.accept_func()[0])
+            table_artist.setFlags(Qt.ItemIsSelectable|Qt.ItemIsEnabled)
+            table_song = QTableWidgetItem(inputdialog.accept_func()[1])
+            table_song.setFlags(Qt.ItemIsSelectable|Qt.ItemIsEnabled)
+        else:
+            table_artist = QTableWidgetItem("..artist..")
+            table_artist.setFlags(Qt.ItemIsSelectable|Qt.ItemIsEnabled)
+            table_song = QTableWidgetItem("..song..")
+            table_song.setFlags(Qt.ItemIsSelectable|Qt.ItemIsEnabled)
+        self.tableWidget.setItem(self.items,0,table_artist)
+        self.tableWidget.setItem(self.items,1,table_song)
+        for i in range(self.playlist.mediaCount()):
+            print(self.playlist.media(i).canonicalUrl().fileName())
+        self.PlayButton.setEnabled(True)
+        self.items+=1
 
     @Slot()
     def play(self):
-        print(self.mediaPlayer.mediaStatus())
-        if self.mediaPlayer.state() == QMediaPlayer.PlayingState:
+        if self.playlist.mediaCount() == 0:
+            alert = selectfileAlert()
+            alert.exec_()
+        elif self.mediaPlayer.state() == QMediaPlayer.PlayingState:
             self.mediaPlayer.pause()
-        elif self.mediaPlayer.mediaStatus() == QMediaPlayer.NoMedia:
-            self.selectfile_alert()
         else:
             self.mediaPlayer.play()
-
-    @Slot()
-    def stop(self):
-        self.mediaPlayer.stop()
-        print(self.mediaPlayer.mediaStatus())
 
     @Slot()
     def set_volume(self):
@@ -112,6 +142,39 @@ class MainUIClass(QMainWindow,mp3playerGUILayout3.Ui_MainWindow):
             icon = self.style().standardIcon(QStyle.SP_DialogYesButton)
             self.PlayingIcon.setPixmap(icon.pixmap(QSize(15,15)))
 
+    @Slot()
+    def repeat(self):
+        if self.repeated:
+            self.playlist.setPlaybackMode(QMediaPlaylist.CurrentItemInLoop)
+            self.repeatButton.setFlat(True)
+            self.repeated = False
+            self.statusbar.showMessage("Repeat function is on")
+        else:
+            self.playlist.setPlaybackMode(QMediaPlaylist.CurrentItemOnce)
+            self.repeatButton.setFlat(False)
+            self.repeated = True
+            self.statusbar.showMessage("Repeat function is off")
+    @Slot()
+    def shuffle(self):
+        if self.shuffled:
+            self.playlist.setPlaybackMode(QMediaPlaylist.Random)
+            self.shuffleButton.setFlat(True)
+            self.shuffled = False
+            self.displayfilename_thread.exit()
+            self.statusbar.clearMessage()
+            self.statusbar.showMessage("Shuffle function is on",100000)
+            self.statusbar.clearMessage()
+            self.displayfilename_thread.start()
+        else:
+            self.playlist.setPlaybackMode(QMediaPlaylist.Sequential)
+            self.shuffleButton.setFlat(False)
+            self.shuffled = True
+            self.displayfilename_thread.exit()
+            self.statusbar.clearMessage()
+            self.statusbar.showMessage("Shuffle function is off",100000)
+            self.statusbar.clearMessage()
+            self.displayfilename_thread.start()
+
     @Slot('qint64', name="positionChanged")
     def positionChanged(self, position):
         self.Timeline.setValue(position)
@@ -123,7 +186,6 @@ class MainUIClass(QMainWindow,mp3playerGUILayout3.Ui_MainWindow):
 
     @Slot('qint64', name = 'durationChanged')
     def durationChanged(self, duration):
-        print("duration",type(duration))
         self.Timeline.setRange(0, duration)
 
     def displaytime_func(self,position):
@@ -164,18 +226,11 @@ class MainUIClass(QMainWindow,mp3playerGUILayout3.Ui_MainWindow):
             self.mediaPlayer.setMuted(False)
             self.volume_on = True
 
-    def selectfile_alert(self):
-        alert = QMessageBox()
-        alert.setIcon(QMessageBox.Information)
-        alert.setText("Please select a file")
-        alert.setInformativeText("No song is queued.")
-        alert.exec_()
-
     def fixLayout(self):
         _translate = QCoreApplication.translate
         self.PlayButton.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
-        self.BackwardButton.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekBackward))
-        self.ForwardButton.setIcon(self.style().standardIcon(QStyle.SP_MediaSeekForward))
+        self.BackwardButton.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipBackward))
+        self.ForwardButton.setIcon(self.style().standardIcon(QStyle.SP_MediaSkipForward))
         self.StopButton.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
         self.muteButton.setIcon(self.style().standardIcon(QStyle.SP_MediaVolume))
         icon = self.style().standardIcon(QStyle.SP_DialogNoButton)
@@ -197,6 +252,49 @@ class MainUIClass(QMainWindow,mp3playerGUILayout3.Ui_MainWindow):
         #self.displayfilename.setText(_translate("MainWindow", ""))
         #self.displayfilename2.setText(_translate("MainWindow", ""))
         self.Timeleft.setText(_translate("MainWindow", "-00 min 00 s"))
+        self.tableWidget.setHorizontalHeaderLabels(["Artist","Song"])
+
+    def erroralert(self):
+        print(self.mediaPlayer.error())
+        #print("type of args: " + type(args), "  args: ",args)
+    def getcurrentrow(self,row,col):
+        self.playlist.setCurrentIndex(row+1)
+        self.mediaPlayer.play()
+
+class selectfileAlert(QMessageBox):
+    def __init__(self,parent=None):
+        super(selectfileAlert,self).__init__(parent)
+        self.setIcon(self.Information)
+        self.setText("Please select a file")
+        self.setInformativeText("No song is queued.")
+
+class InputDialog(QDialog):
+    def __init__(self,parent=None):
+        super(InputDialog,self).__init__(parent)
+        artist = QLabel("Artist: ")
+        self.artistEdit = QLineEdit()
+        song = QLabel("Song: ")
+        informativeText = QLabel("<font size = 4> <b>Choose artist and song name to display</b></font>")
+        self.songEdit = QLineEdit()
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Apply |QDialogButtonBox.Cancel)
+
+        grid = QGridLayout()
+        grid.addWidget(informativeText,0,0,1,4)
+        grid.addWidget(artist, 1, 0)
+        grid.addWidget(self.artistEdit,1,1,1,3)
+        grid.addWidget(song,2,0)
+        grid.addWidget(self.songEdit,2,1,1,3)
+        grid.addWidget(self.buttonBox,4,1,1,2)
+        self.setLayout(grid)
+        self.resize(400, 200)
+        self.setWindowTitle("Display song information")
+
+        self.buttonBox.clicked.connect(self.accept_func)
+        self.buttonBox.rejected.connect(self.reject)
+
+    def accept_func(self):
+        self.accept()
+        return self.artistEdit.text(),self.songEdit.text()
 
 class DisplayThread(QThread):
     labeltext = Signal(str)
@@ -234,8 +332,32 @@ class DisplayThread(QThread):
             string_list.append(filename[i:])
         return string_list
 
+
+def setstyle(app):
+
+    palette = QPalette() # Get a copy of the standard palette.
+    palette.setColor(QPalette.Window, QColor(53, 53, 53))
+    palette.setColor(QPalette.WindowText, Qt.white)
+    palette.setColor(QPalette.Base, QColor(25, 25, 25))
+    palette.setColor(QPalette.AlternateBase, QColor(53, 53, 53))
+    palette.setColor(QPalette.ToolTipBase, Qt.white)
+    palette.setColor(QPalette.ToolTipText, Qt.white)
+    palette.setColor(QPalette.Text, Qt.white)
+    palette.setColor(QPalette.Button, QColor(53, 53, 53))
+    palette.setColor(QPalette.ButtonText, Qt.white)
+    palette.setColor(QPalette.BrightText, Qt.red)
+    palette.setColor(QPalette.Link, QColor(42, 130, 218))
+    palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
+    palette.setColor(QPalette.HighlightedText, Qt.black)
+    app.setPalette(palette)
+
+    # Additional CSS styling for tooltip elements.
+    app.setStyleSheet("QToolTip { color: #ffffff; background-color: #2a82da; border: 1px solid white; }")
+
 if __name__ == "__main__":
     a = QApplication(sys.argv)
     app = MainUIClass()
+    app.setStyle(QStyleFactory.create("Fusion"))
+    #setstyle(app)
     app.show()
     a.exec_()

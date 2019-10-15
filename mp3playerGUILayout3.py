@@ -82,17 +82,18 @@ class Ui_MainWindow(object):
         self.tableWidget.setShowGrid(True)
         self.tableWidget.setGridStyle(QtCore.Qt.DashLine)
         self.tableWidget.setWordWrap(True)
-        self.tableWidget.setRowCount(1)
-        self.tableWidget.setColumnCount(3)
+#        self.tableWidget.setRowCount(1)
+        self.tableWidget.setColumnCount(2)
         self.tableWidget.setObjectName("tableWidget")
         self.tableWidget.horizontalHeader().setVisible(True)
-        self.tableWidget.horizontalHeader().setDefaultSectionSize(107)
+        self.tableWidget.horizontalHeader().setDefaultSectionSize(160)
         self.tableWidget.horizontalHeader().setHighlightSections(True)
         self.tableWidget.horizontalHeader().setMinimumSectionSize(13)
         self.tableWidget.horizontalHeader().setSortIndicatorShown(False)
-        self.tableWidget.verticalHeader().setVisible(False)
+        self.tableWidget.verticalHeader().setVisible(True)
         self.tableWidget.verticalHeader().setDefaultSectionSize(20)
         self.tableWidget.verticalHeader().setHighlightSections(False)
+
         self.addToQueue = QtWidgets.QPushButton(self.centralwidget)
         self.addToQueue.setGeometry(QtCore.QRect(340, 3, 50, 34))
         self.addToQueue.setObjectName("addToQueue")
@@ -135,7 +136,6 @@ class Ui_MainWindow(object):
         self.PlayingIcon.setText(_translate("MainWindow", "PlayingIcon"))
         self.shuffleButton.setText(_translate("MainWindow", "shuffle"))
         self.repeatButton.setText(_translate("MainWindow", "PushButton"))
-
 
 if __name__ == "__main__":
     import sys
